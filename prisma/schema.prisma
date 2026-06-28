@@ -1,0 +1,251 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model AdminConfig {
+  id                 String  @id @default("admin")
+  username           String
+  passwordHash       String
+  bannerText         String  @default("🚀 Placement Season Hack: Get 20% off unlocked copyable resume formats today only!")
+  isBannerActive     Boolean @default(true)
+  dynamicPrice       Int     @default(49)
+  landingVariant     String  @default("minimal")
+  isFlashOfferActive Boolean @default(false)
+  flashPrice         Int     @default(39)
+  isReferralActive   Boolean @default(true)
+  invitesRequired    Int     @default(3)
+
+  // Dynamic Landing CMS [NEW]
+  heroHeadline       String  @default("Your Projects Are Gold. Your Resume Doesn't Show It.")
+  heroSubheadline    String  @default("Turn your CGPA, branch-specific skills, and raw projects into ATS-ready, recruiter-approved resume content in 2 minutes.")
+  ctaText            String  @default("Build My Resume Free")
+  badgeText          String  @default("Built for Indian Engineering Students")
+  testimonialsJson   String  @default("[]")
+  faqsJson           String  @default("[]")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  password      String?
+  emailVerified DateTime?
+  image         String?
+  isBlocked     Boolean   @default(false)
+  referralCode  String?   @unique
+  referredBy    String?
+  accounts      Account[]
+  sessions      Session[]
+  resumes       Resume[]
+  createdAt     DateTime  @default(now())
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?  @db.Text
+  access_token       String?  @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?  @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Resume {
+  id            String   @id @default(cuid())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  sessionId     String   // For non-logged-in users
+  status        String   @default("DRAFT") // DRAFT, GENERATED, PAID, EXPORTED
+  resumeName    String?  // Optional name for the resume (editable in dashboard)
+  
+  // Input and output data stored as strings/JSON strings (SQLite friendly)
+  inputData     String   // Full form input (JSON stringified)
+  outputFree    String?  // Free tier output (JSON stringified teaser)
+  outputFull    String?  // Full paid output (JSON stringified)
+  
+  // Payment
+  paymentStatus String   @default("PENDING") // PENDING, PAID, FAILED, REFUNDED
+  paymentId     String?
+  paymentLinkId String?
+  amountPaid    Int?     // in paise (4900 = ₹49)
+  
+  // Metadata
+  targetRole    String?
+  branch        String?
+  cgpa          String?
+  college       String?
+  
+  // UTM & Analytics Tracking [NEW]
+  utmSource     String?
+  utmMedium     String?
+  utmCampaign   String?
+  deviceType    String?  @default("desktop")
+  couponCode    String?
+  abandoned     Boolean  @default(false)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([sessionId])
+  @@index([paymentStatus])
+}
+
+model WaitlistEmail {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  college   String?
+  branch    String?
+  createdAt DateTime @default(now())
+}
+
+model FlashProjectLog {
+  id           String   @id @default(cuid())
+  repoUrl      String
+  projectTitle String
+  status       String   // SUCCESS or ERROR
+  errorMessage String?  @db.Text
+  createdAt    DateTime @default(now())
+}
+
+model FeatureFlag {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  enabled   Boolean  @default(false)
+  payload   String?  @db.Text
+  updatedAt DateTime @updatedAt
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  sessionId String
+  eventType String
+  page      String
+  metadata  String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([eventType])
+}
+
+model ExperimentAssignment {
+  id             String   @id @default(cuid())
+  sessionId      String
+  experimentName String
+  variant        String
+  converted      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@unique([sessionId, experimentName])
+}
+
+model NotificationQueue {
+  id          String   @id @default(cuid())
+  userId      String?
+  email       String
+  channel     String
+  triggerType String
+  status      String
+  retryCount  Int      @default(0)
+  errorMessage String? @db.Text
+  scheduledAt DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([status])
+}
+
+model UserCohort {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  signupMonth       String
+  college           String?
+  branch            String?
+  acquisitionSource String?
+  firstPaymentDate  DateTime?
+  createdAt         DateTime @default(now())
+}
+
+model ResumeFeedback {
+  id            String   @id @default(cuid())
+  resumeId      String   @unique
+  rating        Int?
+  liked         Boolean  @default(true)
+  comments      String?  @db.Text
+  copiedText    Boolean  @default(false)
+  downloadedPdf Boolean  @default(false)
+  editCount     Int      @default(0)
+  createdAt     DateTime @default(now())
+}
+
+model PaymentEvent {
+  id            String   @id @default(cuid())
+  resumeId      String
+  sessionId     String
+  status        String
+  amount        Int
+  errorMessage  String?  @db.Text
+  couponUsed    String?
+  retryAttempts Int      @default(0)
+  createdAt     DateTime @default(now())
+}
+
+model RiskEvent {
+  id           String   @id @default(cuid())
+  ipAddress    String
+  email        String?
+  riskType     String
+  severity     String
+  isBlocked    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([ipAddress])
+}
+
+model SystemQueue {
+  id          String   @id @default(cuid())
+  jobType     String
+  status      String
+  latencyMs   Int      @default(0)
+  errorStack  String?  @db.Text
+  createdAt   DateTime @default(now())
+}
+
+model CampusInsight {
+  id                 String   @id @default(cuid())
+  collegeName        String   @unique
+  totalRegistrations Int      @default(0)
+  conversionRate     Float    @default(0.0)
+  viralityScore      Float    @default(0.0)
+  activeSeason       String
+  createdAt          DateTime @default(now())
+}
